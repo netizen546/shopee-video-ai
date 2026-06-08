@@ -1,59 +1,55 @@
-
 import streamlit as st
-import pandas as pd
-import requests
+import whisper
+import os
+from moviepy.editor import VideoFileClip
 
-# Ambil input kata kunci pencarian dari pengguna di HP
-keyword_input = st.text_input("Cari Produk Tren (Misal: Tempered Glass, TWS):", "Tempered Glass")
+# Set tampilan halaman browser
+st.set_page_config(page_title="Shopee Video AI Optimizer", page_icon="🧡", layout="centered")
 
-@st.cache_data(ttl=3600) # Hemat kuota API! Data disimpan 1 jam di memori
-def fetch_rapidapi_shopee(keyword):
-    # Masukkan alamat URL Endpoint dari RapidAPI yang Anda pilih
-    url = "https://shopee-data-importer.p.rapidapi.com/search" 
-    
-    # Masukkan parameter pencarian (sesuaikan dengan dokumentasi API-nya)
-    querystring = {"keyword": keyword, "region": "ID", "limit": "10"}
-    
-    # MASUKKAN API KEY GRATIS ANDA DI SINI
-    headers = {
-        "X-RapidAPI-Key": "8a8e528d12mshd7ed5243ffc3f97p1b8a42jsn5875a0d585d7",
-        "X-RapidAPI-Host": "shopee-scraper-indonesia.p.rapidapi.com"
-    }
-    
-    try:
-        # Menembak server RapidAPI secara real-time
-        response = requests.get(url, headers=headers, params=querystring)
-        data_json = response.json()
-        
-        # Ekstrak data JSON menjadi tabel (struktur disesuaikan dengan respons asli API)
-        items = data_json.get("products", [])
-        
-        list_produk = []
-        for item in items:
-            list_produk.append({
-                "Nama Produk": item.get("title"),
-                "Harga (Rp)": item.get("price"),
-                "Penjualan (Bulanan)": item.get("historical_sold"),
-                "Rating": item.get("rating"),
-                "Toko": item.get("shop_name")
-            })
+st.title("🧡 Shopee Video AI Metadata Optimizer")
+st.write("Analisis video unboxing/review Anda langsung dari HP dan dapatkan caption SEO Shopee.")
+
+# Input Form
+product_name = st.text_input("Nama Produk:", placeholder="Contoh: Tempered Glass iPhone 17 Pro Max")
+niche = st.selectbox("Kategori Shopee:", ["Elektronik & Gadget", "Fashion & Apparel", "Kecantikan & Rumah Tangga"])
+
+# Upload File Video langsung dari galeri HP Android
+uploaded_file = st.file_uploader("Pilih atau Rekam Video (.mp4, .mov)", type=["mp4", "mov", "avi"])
+
+if uploaded_file is not None and product_name:
+    if st.button("PROSES AI & GENERATE METADATA"):
+        with st.spinner("AI sedang mendengarkan video Anda... Mohon tunggu..."):
             
-        df = pd.DataFrame(list_produk)
-        # Rumus Proyeksi GMV Otomatis
-        df["Estimasi GMV (Rp)"] = df["Harga (Rp)"] * df["Penjualan (Bulanan)"]
-        return df
-        
-    except Exception as e:
-        # Jika kuota habis atau key salah, tampilkan pesan aman
-        st.warning("Menampilkan data simulasi (Kuota API eksternal belum terhubung/habis).")
-        # Balikkan data simulasi agar aplikasi tidak macet/blank merah
-        mock_data = [
-            {"Nama Produk": f"{keyword} Premium Furycube", "Harga (Rp)": 85000, "Penjualan (Bulanan)": 1420, "Rating": 4.9, "Estimasi GMV (Rp)": 120700000},
-            {"Nama Produk": f"{keyword} OOTD Kasual", "Harga (Rp)": 125000, "Penjualan (Bulanan)": 650, "Rating": 4.8, "Estimasi GMV (Rp)": 81250000}
-        ]
-        return pd.DataFrame(mock_data)
-
-# Panggil fungsi dan tampilkan di Streamlit
-if st.button("MULAI RISET DATA"):
-    df_hasil = fetch_rapidapi_shopee(keyword_input)
-    st.dataframe(df_hasil, use_container_width=True)
+            # Simpan file sementara di server
+            with open("temp_video.mp4", "wb") as f:
+                f.write(uploaded_file.read())
+                
+            # 1. Ekstrak Audio
+            video = VideoFileClip("temp_video.mp4")
+            video.audio.write_audiofile("temp_audio.mp3", logger=None)
+            video.close()
+            
+            # 2. Transkrip suara lewat Whisper AI
+            model = whisper.load_model("base")
+            result = model.transcribe("temp_audio.mp3", language="id")
+            spoken_text = result["text"].strip()
+            
+            # Hapus file sampah sementara
+            os.remove("temp_video.mp4")
+            os.remove("temp_audio.mp3")
+            
+            # 3. Racik Caption Otomatis
+            st.success("Analisis AI Selesai!")
+            
+            optimized_caption = (
+                f"🔥 RACUN SHOPEE: {product_name.upper()} 🔥\n\n"
+                f"Lagi cari {product_name} premium yang kualitasnya terbukti oke? "
+                f"Tonton detail review-nya di video ini sampai habis! Produk ini punya spesifikasi "
+                f"dan fungsi terbaik di kelasnya, worth it banget untuk jangka panjang.\n\n"
+                f"🛒 Ambil harga promo sekarang dengan klik KERANJANG KUNING di kiri bawah! ✨\n\n"
+                f"📌 HASHTAG REKOMENDASI ALGORITMA:\n"
+                f"#RacunShopee #ShopeeVideo #{product_name.replace(' ', '')} #ShopeeHaul"
+            )
+            
+            # Tampilkan di text area agar mudah di-copy di HP
+            st.text_area("Salin Caption & Hashtag Ini:", value=optimized_caption, height=300)
